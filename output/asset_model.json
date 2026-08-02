@@ -1,0 +1,64 @@
+{
+  "assets": [
+    {
+      "id": "ProtRelay1.P1",
+      "ied_name": "ProtRelay1",
+      "ap_name": "P1",
+      "ip": "192.168.10.11",
+      "mac": "00:0C:CD:01:00:11",
+      "subnet": "255.255.255.0",
+      "ied_type": "REF615",
+      "manufacturer": "ExampleVendor",
+      "description": "Feeder protection relay, Bay 1"
+    },
+    {
+      "id": "ProtRelay2.P1",
+      "ied_name": "ProtRelay2",
+      "ap_name": "P1",
+      "ip": "192.168.10.12",
+      "mac": "00:0C:CD:01:00:12",
+      "subnet": "255.255.255.0",
+      "ied_type": "REF615",
+      "manufacturer": "ExampleVendor",
+      "description": "Feeder protection relay, Bay 2"
+    },
+    {
+      "id": "BayController1.P1",
+      "ied_name": "BayController1",
+      "ap_name": "P1",
+      "ip": "192.168.10.21",
+      "mac": "00:0C:CD:01:00:21",
+      "subnet": "255.255.255.0",
+      "ied_type": "REC615",
+      "manufacturer": "ExampleVendor",
+      "description": "Bay controller / gateway, Bay 1"
+    },
+    {
+      "id": "StationHMI.P1",
+      "ied_name": "StationHMI",
+      "ap_name": "P1",
+      "ip": "192.168.10.51",
+      "mac": "00:0C:CD:01:00:51",
+      "subnet": "255.255.255.0",
+      "ied_type": "SYS600",
+      "manufacturer": "ExampleVendor",
+      "description": "Station-level HMI / MMS client"
+    }
+  ],
+  "goose_flows": [
+    {
+      "publisher_asset_id": "ProtRelay1.P1",
+      "control_block": "gcbTrip",
+      "dst_mac": "01:0C:CD:01:00:01",
+      "appid": "1001",
+      "vlan_id": "100"
+    },
+    {
+      "publisher_asset_id": "ProtRelay2.P1",
+      "control_block": "gcbTrip",
+      "dst_mac": "01:0C:CD:01:00:02",
+      "appid": "1002",
+      "vlan_id": "100"
+    }
+  ]
+}
