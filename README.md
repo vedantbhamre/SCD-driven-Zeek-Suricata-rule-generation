@@ -1,104 +1,192 @@
-# SCD to IDS Rules (small prototype)
+# SCD to IDS Rule Generation (Prototype)
 
-This is a small prototype I built after the interview, to try out the idea
-we talked about - generating Zeek/Suricata rules automatically from a
-Substation Configuration Description (SCD) file, instead of writing rules
-by hand for every device.
+A small proof-of-concept exploring the idea of automatically generating IDS rules from an IEC 61850 Substation Configuration Description (SCD) file.
 
-I know this is not complete or production-level, it was done in a couple
-of days just to test if the idea works and to show that I understood the
-feedback from the interview.
+Instead of manually maintaining IDS rules whenever the substation configuration changes, this prototype parses the SCD, builds an intermediate asset model, and uses that model to generate basic Suricata and Zeek rule templates.
 
-## What it does (in short)
+---
 
-1. Reads an SCD (XML) file and finds all the devices (IEDs) and their
-   network addresses (IP, MAC).
-2. Also finds which device publishes GOOSE messages, and on which
-   APPID/MAC.
-3. Puts all this into one simple internal list/model (this is basically
-   the "asset management" part - know what devices exist before trying
-   to detect anything abnormal).
-4. From that same list, generates:
-   - Suricata rules (`.rules` file)
-   - a Zeek script (`.zeek` file)
+## Motivation
 
-So the flow is: **SCD file -> asset list -> rules**. I kept these as 3
-separate steps/files instead of one big script, because it made more
-sense to me after the interview question about parsers/compilers - like
-how a compiler first reads code into some internal structure, and only
-after that generates the output. Here the "internal structure" is the
-asset list, and the "output" is the Suricata/Zeek rules.
+The SCD file already contains the information needed to describe the network:
 
-## Why Suricata and Zeek are handled separately
+- Which devices (IEDs) exist
+- Their network addresses (IP/MAC)
+- Their communication configuration
+- GOOSE publishers and their associated APPIDs
 
-They don't work the same way, so I couldn't generate both from one
-template:
+Rather than generating IDS rules directly from the XML, this prototype first converts the SCD into an intermediate **AssetModel**.
 
-- Suricata: each rule is one line, like a signature. So for this I just
-  generate one rule per condition I care about (e.g. unknown IP, unknown
-  GOOSE APPID).
-- Zeek: it's more like a small program, not just rules. So instead of
-  writing many small rules, I generate one script, and inside that script
-  there is a list of the known devices - the script logic itself doesn't
-  change between substations, only that list changes.
+This separation keeps the parser independent from the rule generators and allows the same asset model to be reused for different outputs.
 
-## Files
+```
+SCD File
+    │
+    ▼
+ parser.py
+    │
+    ▼
+ AssetModel
+    │
+    ├──────────────┐
+    ▼              ▼
+Suricata       Zeek
+ Rule Gen      Rule Gen
+```
+
+This design also makes it possible to extend the project later with additional outputs such as NetBox asset imports or network visualizations.
+
+---
+
+## Project Structure
 
 ```
 IDS/
-├── sample_data/example.scd     <- sample SCD file (made this myself,
-│                                    not a real substation, but same
-│                                    structure as a real one)
+├── sample_data/
+│   └── example.scd
+│
 ├── src/
-│   ├── parser.py       <- reads the SCD, step 1
-│   ├── asset_model.py  <- the asset list / internal structure, step 2
-│   ├── rulegen.py       <- generates Suricata + Zeek rules, step 3
-│   └── main.py            <- runs everything together
-├── output/               <- generated rules end up here
+│   ├── parser.py
+│   ├── asset_model.py
+│   ├── rulegen.py
+│   └── main.py
+│
+├── output/
+│   ├── asset_model.json
+│   ├── generated_suricata.rules
+│   └── generated_zeek.zeek
+│
 └── tests/
-    └── test_parser.py    <- some basic tests, to check the parser
-                              actually pulls out the right data
+    └── test_parser.py
 ```
 
-## How to run it
+---
 
-```
-cd src
+## Pipeline
+
+### 1. Parse the SCD
+
+The parser extracts:
+
+- IEDs and Access Points
+- IP addresses
+- MAC addresses
+- GOOSE publishers
+- APPIDs
+- VLAN information
+
+---
+
+### 2. Build the Asset Model
+
+The extracted information is converted into a simple internal representation.
+
+The AssetModel acts as a clean description of the substation assets and their communication information, without being tied to XML or to a specific IDS engine.
+
+---
+
+### 3. Generate IDS Rules
+
+The AssetModel is then used to generate outputs for two different IDS engines.
+
+### Suricata
+
+Suricata is signature-based.
+
+The prototype generates:
+
+- Known asset IP list
+- Rule to detect unknown IP addresses
+- Rule to detect unexpected GOOSE APPIDs
+
+---
+
+### Zeek
+
+Zeek is event-driven.
+
+Instead of generating many individual rules, the prototype generates:
+
+- one reusable Zeek script
+- populated asset tables derived from the AssetModel
+
+The detection logic remains the same while only the asset data changes for different substations.
+
+---
+
+## Running the Prototype
+
+From the `src` directory:
+
+```bash
 python3 main.py ../sample_data/example.scd --out-dir ../output
 ```
 
-To run the tests:
+Generated files are written to:
+
+```
+output/
+```
+
+---
+
+## Running the Tests
+
 ```
 python3 tests/test_parser.py
 ```
 
-## What I actually checked / didn't check
+The tests verify that the parser extracts the expected assets from the sample SCD file.
 
-- I installed Suricata and ran the generated `.rules` file through it
-  (`suricata -T`, test mode) just to make sure it's not just
-  "rule-looking text" but actually loads without errors. It loaded fine,
-  3/3 rules, 0 errors.
-- I could NOT test the Zeek script against real Zeek, I didn't have it
-  installed/available. So the Zeek script is written based on the syntax
-  I found in Zeek's docs, but I have not 100% confirmed it runs. I'm
-  being upfront about this instead of pretending it's tested.
-- Also the GOOSE part of the Zeek script is left as a comment
-  (not active), because I wasn't sure what the real event name is called
-  in the Zeek/Malcolm setup for GOOSE messages - didn't want to guess and
-  have broken code, so I left it as a placeholder to fill in once I know
-  the actual setup.
+---
 
-## What's not done / what I'd do next
+## Validation
 
-- Right now it only reads GOOSE publishers, not who is allowed to
-  *receive* them (that needs reading ExtRef data from the SCD, didn't
-  get to it).
-- Doesn't handle MMS/Report or Sampled Values yet, only GOOSE.
-- Would like to try exporting the asset list into NetBox (I read that
-  Malcolm already uses NetBox for asset info, but can't fill it
-  automatically from an SCD - so this could fill that gap).
-- Haven't deployed this on an actual Malcolm/Zeek server yet, only
-  tested the rule generation part locally.
+### Suricata
 
-This is just a first attempt, happy to extend it further if this is
-useful for the actual project.
+The generated rules were validated using:
+
+```bash
+suricata -T
+```
+
+The rules loaded successfully without syntax errors.
+
+### Zeek
+
+The Zeek script was generated from the AssetModel but was not validated against a live Zeek/Malcolm installation.
+
+The GOOSE event handler is intentionally left as a placeholder because the exact event exposed by the Malcolm/Zeek setup was not available during development.
+
+---
+
+## Current Scope
+
+This prototype currently focuses on:
+
+- Asset extraction from SCD
+- GOOSE publisher extraction
+- Asset model generation
+- Basic Suricata rule generation
+- Basic Zeek rule generation
+
+---
+
+## Future Work
+
+Possible extensions include:
+
+- Parsing GOOSE subscriber information (ExtRef)
+- MMS and Report Control Blocks
+- Sampled Values (SV)
+- Integration with NetBox
+- Validation against a complete Malcolm deployment
+- Additional IDS rules based on the generated asset model
+
+---
+
+## Notes
+
+This repository is intended as a small proof-of-concept to explore one possible pipeline for transforming an IEC 61850 SCD file into IDS configuration.
+
+The focus was on understanding the overall architecture—from SCD parsing, to asset modelling, to IDS rule generation—rather than implementing a complete production-ready solution.
